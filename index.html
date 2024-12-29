@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mouse Follow Game</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #leaderboard1Section, #leaderboard2Section {
+      width: 200px;
+      background-color: #333;
+      color: white;
+      padding: 10px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      height: 100vh;
+    }
+    #leaderboard1Section {
+      order: 0;
+    }
+    #leaderboard2Section {
+      order: 2;
+    }
+    #leaderboard1Section h3, #leaderboard2Section h3 {
+      color: #fff;
+      margin-top: 0;
+      text-align: center;
+    }
+    canvas {
+      flex: 1;
+      display: block;
+      background: #87CEEB;
+      order: 1;
+    }
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1;
+      flex-direction: column;
+    }
+    .overlay button {
+      padding: 15px 30px;
+      font-size: 20px;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .overlay button:hover {
+      background-color: #0056b3;
+    }
+    .overlay input {
+      padding: 10px;
+      font-size: 18px;
+      margin-top: 10px;
+      border: 2px solid #ccc;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="leaderboard1Section">
+    <h3>1-Player Leaderboard</h3>
+    <div id="leaderboard1"></div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <div id="leaderboard2Section">
+    <h3>2-Player Leaderboard</h3>
+    <div id="leaderboard2"></div>
+  </div>
+  <div class="overlay" id="startScreen">
+    <h2 style="color: white;">Choose Mode</h2>
+    <button onclick="startGame(1)">1 Player</button>
+    <button onclick="startGame(2)">2 Players</button>
+  </div>
+  <div class="overlay" id="gameOverScreen" style="display: none;">
+    <p style="color: white; font-size: 20px;">Game Over! Player 1 Score: <span id="finalScore1"></span></p>
+    <p id="player2ScoreText" style="color: white; display: none;">Player 2 Score: <span id="finalScore2"></span></p>
+    <input type="text" id="playerName1" placeholder="Player 1 Name" />
+    <input type="text" id="playerName2" placeholder="Player 2 Name" style="display: none;" />
+    <button onclick="saveScore()">Submit Score</button>
+  </div>
+  <script>
+    // Canvas setup
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = 400;
+    canvas.height = window.innerHeight;
+
+    // Resize handler
+    window.addEventListener("resize", () => {
+      canvas.height = window.innerHeight;
+    });
+
+    // Game variables
+    let mode = 1;
+    let player1, player2, items, score1, score2, gameOver, baseItemSpeed;
+    let leaderboard1 = [];
+    let leaderboard2 = [];
+    let spawnInterval = 2000;
+    let speedMultiplier = 0.05;
+
+    // Initialize game state
+    function initGame() {
+      player1 = { x: canvas.width / 4, y: canvas.height - 30, width: 50, height: 10, speed: 5 };
+      player2 = { x: (canvas.width * 3) / 4, y: canvas.height - 30, width: 50, height: 10, speed: 30 };
+      items = [];
+      score1 = 0;
+      score2 = 0;
+      gameOver = false;
+      baseItemSpeed = 0.3;
+    }
+
+    // Load leaderboards from local storage
+    function loadLeaderboards() {
+      leaderboard1 = JSON.parse(localStorage.getItem("leaderboard1")) || [];
+      leaderboard2 = JSON.parse(localStorage.getItem("leaderboard2")) || [];
+      updateLeaderboardDisplay();
+    }
+
+    // Save leaderboards to local storage
+    function saveLeaderboards() {
+      localStorage.setItem("leaderboard1", JSON.stringify(leaderboard1));
+      localStorage.setItem("leaderboard2", JSON.stringify(leaderboard2));
+    }
+
+    // Update leaderboard display
+    function updateLeaderboardDisplay() {
+      const lb1Div = document.getElementById("leaderboard1");
+      const lb2Div = document.getElementById("leaderboard2");
+      lb1Div.innerHTML = leaderboard1.slice(0, 100).map((entry, index) => `<p>${index + 1}. ${entry.name} - ${entry.score}</p>`).join("");
+      lb2Div.innerHTML = leaderboard2.slice(0, 100).map((entry, index) => `<p>${index + 1}. ${entry.name1} & ${entry.name2} - ${entry.score1}/${entry.score2}</p>`).join("");
+    }
+
+    // Save score
+    function saveScore() {
+      const playerName1 = document.getElementById("playerName1").value.trim();
+      const playerName2 = document.getElementById("playerName2").value.trim();
+
+      if (mode === 1 && playerName1) {
+        leaderboard1.push({ name: playerName1, score: score1 });
+        leaderboard1.sort((a, b) => b.score - a.score);
+      } else if (mode === 2 && playerName1 && playerName2) {
+        leaderboard2.push({ name1: playerName1, name2: playerName2, score1, score2 });
+        leaderboard2.sort((a, b) => b.score1 + b.score2 - (a.score1 + a.score2));
+      }
+
+      saveLeaderboards();
+      updateLeaderboardDisplay();
+      resetGameInputs();
+      document.getElementById("gameOverScreen").style.display = "none"; // Hide game over screen
+      restartGame();
+    }
+
+    // Reset game inputs
+    function resetGameInputs() {
+      document.getElementById("playerName1").value = "";
+      document.getElementById("playerName2").value = "";
+      document.getElementById("player2ScoreText").style.display = "none";
+      document.getElementById("playerName2").style.display = "none";
+    }
+
+    // Start game
+    function startGame(selectedMode) {
+      mode = selectedMode;
+      document.getElementById("startScreen").style.display = "none";
+      document.getElementById("gameOverScreen").style.display = "none";
+      if (mode === 2) {
+        document.getElementById("player2ScoreText").style.display = "block";
+        document.getElementById("playerName2").style.display = "block";
+      }
+      initGame();
+      spawnItem();
+      gameLoop();
+      increaseDifficultyOverTime();
+    }
+
+    // Restart game
+    function restartGame() {
+      document.getElementById("startScreen").style.display = "flex";
+    }
+
+    // Gradually increase difficulty
+    function increaseDifficultyOverTime() {
+      setInterval(() => {
+        if (!gameOver) {
+          baseItemSpeed += speedMultiplier;
+          spawnInterval = Math.max(500, spawnInterval - 100);
+        }
+      }, 10000);
+    }
+
+    // Spawn items
+    function spawnItem() {
+      if (!gameOver) {
+        let item = { x: Math.random() * (canvas.width - 20), y: 0, size: 20, speed: baseItemSpeed + Math.random() * 0.5 };
+        items.push(item);
+        setTimeout(spawnItem, spawnInterval);
+      }
+    }
+
+    // Update game
+    function update() {
+      items.forEach((item, index) => {
+        item.y += item.speed;
+        if (item.y > canvas.height) items.splice(index, 1);
+
+        if (
+          item.x < player1.x + player1.width &&
+          item.x + item.size > player1.x &&
+          item.y < player1.y + player1.height &&
+          item.y + item.size > player1.y
+        ) {
+          items.splice(index, 1);
+          score1++;
+        }
+
+        if (
+          mode === 2 &&
+          item.x < player2.x + player2.width &&
+          item.x + item.size > player2.x &&
+          item.y < player2.y + player2.height &&
+          item.y + item.size > player2.y
+        ) {
+          items.splice(index, 1);
+          score2++;
+        }
+      });
+
+      if (items.some(item => item.y + item.size > canvas.height)) {
+        gameOver = true;
+        document.getElementById("finalScore1").textContent = score1;
+        document.getElementById("finalScore2").textContent = score2;
+        document.getElementById("gameOverScreen").style.display = "flex";
+      }
+    }
+
+    // Draw game
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "blue";
+      ctx.fillRect(player1.x, player1.y, player1.width, player1.height);
+
+      if (mode === 2) {
+        ctx.fillStyle = "green";
+        ctx.fillRect(player2.x, player2.y, player2.width, player2.height);
+      }
+
+      ctx.fillStyle = "red";
+      items.forEach(item => {
+        ctx.fillRect(item.x, item.y, item.size, item.size);
+      });
+
+      ctx.fillStyle = "black";
+      ctx.font = "20px Arial";
+      ctx.fillText(`P1 Score: ${score1}`, 10, 30);
+      if (mode === 2) ctx.fillText(`P2 Score: ${score2}`, 10, 60);
+    }
+
+    // Game loop
+    function gameLoop() {
+      if (!gameOver) {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    // Player controls
+    canvas.addEventListener("mousemove", e => {
+      const rect = canvas.getBoundingClientRect();
+      player1.x = e.clientX - rect.left - player1.width / 2;
+    });
+
+    window.addEventListener("keydown", e => {
+      if (mode === 2) {
+        if (e.key === "ArrowLeft" && player2.x > 0) player2.x -= player2.speed;
+        if (e.key === "ArrowRight" && player2.x < canvas.width - player2.width) player2.x += player2.speed;
+      }
+    });
+
+    window.onload = loadLeaderboards;
+  </script>
+</body>
+</html>
